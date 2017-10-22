@@ -2,8 +2,14 @@
 ;
 ;	simple i2c thermometer
 ;
-;	i2c thermometers in, serial out, 
-;	shift register based display on GP4 and GP5 (CLOCK and DATA)
+;	i2c thermometers in, 36khz modulated (IR compat) serial out, 
+;	shift register based display with CLOCK and DATA. 
+;	to interface to computer use TSOP infrared demodulator with it's output tied to RX pin (ttl)
+;	TSOP works optimally at 1200bps. 
+; 	if you want to switch to normal bit-banged serial - you must hack the serial routines yourself
+;	(i still did not got to it, but i've left plenty of commented-out code to make it simple)
+;	
+;	there are few fixmes but code is tested and does it's job fine. 
 ;
 ;*******************************************************************
 
@@ -70,7 +76,68 @@ updated
 ;#define	lm75_6
 ;#define	lm75_7
 
+;*******************************************************************
+;
+;	I/O configuration
+;
 
+
+#define S_out		GPIO,GP5	; 1200 baud , 36khz modulated serial out
+#define S_out_TRIS	TRISIO,GP5	; serial port TRIS
+
+#define	SCL		GPIO,GP1	; GP1 - SCL
+#define	SCL_tris	TRISIO,GP1	; GP1 - tris
+
+#define SDA		GPIO,GP2 	; GP2 - SDA
+#define SDA_tris	TRISIO,GP2 	; GP2 - tris 
+
+
+#ifdef shift_register_display
+#define DISPLAY_CLOCK	GPIO,GP4 	; GP4 - shift register CLOCK
+#define DISPLAY_CLOCK_TRIS TRISIO,GP4	; GP4 - tris
+
+#define DISPLAY_DATA	GPIO,GP0	; GP5 - shift register DATA
+#define DISPLAY_DATA_TRIS TRISIO,GP0	; GP5 - tris
+#endif
+
+
+;#define minus_on_last_dot 1 		; if this is defined, minus is displayed as last dot,
+					; instead of 'character' - on 7 segment.
+					; last dot is useless anyway, 
+					; and you can re-route i's line to 'real' minus LED 
+					; i.e. horizontal oriented flat blue LED, 
+					; or snowflake masked LED , or whatever. 					
+			;comment it out for regular displayed on first segment. obviously it will not fit on
+			; 2 character displays.
+#define chars_per_display	4	
+ ; how many chars single display fits? used for padding, and choice to display 100's and below 1's.
+
+
+;*******************************************************************
+;
+;	lm75 configuration
+;
+
+;#define	lm75_classic	;uncomment this to compile simplified 0.5C precission code
+
+;*******************************************************************
+;
+;	CPU configuration
+;
+
+	MESSG		"Processor = 12F629"
+	#define 	RAMStart	0x20
+	processor	12f629
+	include		<p12f629.inc>
+;	__config	_INTRC_OSC_CLKOUT & _PWRTE_ON & _WDT_OFF & _CP_OFF & _BODEN_ON  & _MCLRE_OFF
+	__config	_INTRC_OSC_NOCLKOUT & _PWRTE_ON & _WDT_ON & _CP_OFF & _BODEN_ON  & _MCLRE_OFF
+;	__config	_HS_OSC & _PWRTE_ON & _WDT_OFF & _CP_OFF & _BODEN_ON  & _MCLRE_OFF
+
+
+
+;----------------------------------------end of defines
+;--------------------------------------------------------------end of defines
+; ------------------------------------------------------------------------------end of defines
 
 
 ; 	code base was 16f628 frequency counter. 
@@ -118,61 +185,6 @@ copy	macro	from,to
 	endm
 
 
-;*******************************************************************
-;
-;	CPU configuration
-;
-
-	MESSG		"Processor = 12F629"
-	#define 	RAMStart	0x20
-	processor	12f629
-	include		<p12f629.inc>
-;	__config	_INTRC_OSC_CLKOUT & _PWRTE_ON & _WDT_OFF & _CP_OFF & _BODEN_ON  & _MCLRE_OFF
-	__config	_INTRC_OSC_NOCLKOUT & _PWRTE_ON & _WDT_ON & _CP_OFF & _BODEN_ON  & _MCLRE_OFF
-;	__config	_HS_OSC & _PWRTE_ON & _WDT_OFF & _CP_OFF & _BODEN_ON  & _MCLRE_OFF
-
-;*******************************************************************
-;
-;	I/O configuration
-;
-
-
-#define S_out		GPIO,GP5	; 1200 baud , 36khz modulated serial out
-#define S_out_TRIS	TRISIO,GP5	; serial port TRIS
-
-#define	SCL		GPIO,GP1	; GP1 - SCL
-#define	SCL_tris	TRISIO,GP1	; GP1 - tris
-
-#define SDA		GPIO,GP2 	; GP2 - SDA
-#define SDA_tris	TRISIO,GP2 	; GP2 - tris 
-
-
-#ifdef shift_register_display
-#define DISPLAY_CLOCK	GPIO,GP4 	; GP4 - shift register CLOCK
-#define DISPLAY_CLOCK_TRIS TRISIO,GP4	; GP4 - tris
-
-#define DISPLAY_DATA	GPIO,GP0	; GP5 - shift register DATA
-#define DISPLAY_DATA_TRIS TRISIO,GP0	; GP5 - tris
-#endif
-
-
-;#define minus_on_last_dot 1 		; if this is defined, minus is displayed as last dot,
-					; instead of 'character' - on 7 segment.
-					; last dot is useless anyway, 
-					; and you can re-route i's line to 'real' minus LED 
-					; i.e. horizontal oriented flat blue LED, 
-					; or snowflake masked LED , or whatever. 					
-			;comment it out for regular displayed on first segment. obviously it will not fit on
-			; 2 character displays.
-#define chars_per_display	4	; how many chars single display fits? used for padding, and choice to display 100's and below 1's.
-
-			 
-;*******************************************************************
-; 
-;	lm75 configuration
-;
-
-;#define	lm75_classic	;uncomment this to compile simplified 0.5C precission code
 
 
 
