@@ -9,31 +9,56 @@
 ; 	if you want to switch to normal bit-banged serial - you must hack the serial routines yourself
 ;	(i still did not got to it, but i've left plenty of commented-out code to make it simple)
 ;	
-;	there are few fixmes but code is tested and does it's job fine. 
+;	there are few fixmes, lot of spaghetti and bit of confusing assumptions, 
+; 	 but code is tested and does it's job fine.
 ;
+;	
 ;*******************************************************************
 
+;-----------features 
 
+#define infrared_serial_output
+	;//fixme - not really ifdef'd propelry yet
+	; 36khz modulated serial output 
+#ifdef 	infrared_serial_output
 ;#define splash_message
 	; greeting/splash message on init/reset
 ;#define calibration_phase 
 	;uncomment to display OSCCAL values (and calibrate serial out)
+#endif 	infrared_serial_output
 
 ;#define shutdown_mode 
 	; shut down lm75 after operations
-
 ;#define  sleep_mode 
 	; sleep for delay
-
 ;#define  shift_register_display
 	; required to have any shift register routines at all 
-
 ;#define	cooling_mode
 	;//fixme 
 	; global cooling or heating mode of thermostat. should be selectable for each sensor independently,
 	; and from EEPROM... 
 	; requires re-make of shutdown routines which mess with config register as a whole. 
 	; right now setting affects ALL sensors. not defining means sensor will try to heat to set temp (active high)
+#define	pseudo_analog_keyboard
+	; pseudo analog keyboard. it sets KEY_[n] low, measures time taking it to get high again,
+	; then sets it high and measures time taking it to get low. 
+	; this is stored in two variables allowing to implement few types of keyboards. 
+
+#ifdef	pseudo_analog_keyboard
+#define	simple_two_key_keyboard
+	; this is simplest two keys implementation. 
+	; it requires 100nF cap and two buttons with 100ohm resistors (one to Vss , one to Vdd)
+	; pros - not dependent on temperature, quality of capacitor etc. 
+;#define analog_ladder_keyboard
+	; using 100nF cap and set of resistors to change discharge and charge times in series with each switch. 
+	;//fixme - currently not implemented
+#ifdef	simple_two_key_keyboard
+#ifdef	infrared_serial_output
+#define	simple_two_key_keyboard_infrared_serial_output_debug 
+	;//fixme - currently not ifdef'd 
+#endif  infrared_serial_output
+#endif	simple_two_key_keyboard
+#endif 	pseudo_analog_keyboard
 
 ;------formatting
 
@@ -81,25 +106,37 @@ updated
 ;	I/O configuration
 ;
 
-
+#ifdef	infrared_serial_output
 #define S_out		GPIO,GP5	; 1200 baud , 36khz modulated serial out
 #define S_out_TRIS	TRISIO,GP5	; serial port TRIS
+#define S_out_WPU	WPU,GP5
+#endif 	infrared_serial_output 
 
 #define	SCL		GPIO,GP1	; GP1 - SCL
 #define	SCL_tris	TRISIO,GP1	; GP1 - tris
+#define SCL_WPU		WPU,GP1
 
 #define SDA		GPIO,GP2 	; GP2 - SDA
 #define SDA_tris	TRISIO,GP2 	; GP2 - tris 
-
+#define SDA_WPU		WPU,GP2
 
 #ifdef shift_register_display
 #define DISPLAY_CLOCK	GPIO,GP4 	; GP4 - shift register CLOCK
 #define DISPLAY_CLOCK_TRIS TRISIO,GP4	; GP4 - tris
+#define	DISPLAY_CLOCK_WPU WPU,GP4
 
 #define DISPLAY_DATA	GPIO,GP0	; GP5 - shift register DATA
 #define DISPLAY_DATA_TRIS TRISIO,GP0	; GP5 - tris
+#define	DISPLAY_DATA_WPU WPU,GP0
 #endif
 
+#ifdef	pseudo_analog_keyboard
+; this keyboard implementation uses just one pin to sense few buttons.
+; it requires capacitor and buttons to pull it up or down .  
+#define	KEY_1		GPIO,GP4
+#define KEY_1_tris	TRISIO,GP4
+#define KEY_1_WPU	WPU,GP4
+#endif	pseudo_analog_keyboard
 
 ;#define minus_on_last_dot 1 		; if this is defined, minus is displayed as last dot,
 					; instead of 'character' - on 7 segment.
@@ -250,13 +287,15 @@ copy	macro	from,to
 	TEMP2
 	set_temp
 	set_hyst
-	chars_left	
+	chars_left
+	KEY_1_0to1_time
+	KEY_1_1to0_time
 	endc
 
 
 ;**********************************************************
 
-
+#ifdef	calibration_phase
 DISPLAY_CALIBRATION	macro
 
         clrf    AccA
@@ -266,31 +305,22 @@ DISPLAY_CALIBRATION	macro
 	movfw	OSCCAL
 	bank0	
         movwf   AccA+3
-
 ;       Format as BCD string
 ;        iorwf   FPE,f           ; W may hold Error (0xff)
         call    B2_BCD          ; format as BCD
 				; extract and send to display
-
 ;        call    Swap3
 ;       call    Move3
-
-
-	SWAPF	bcd+6,W		; 
+	SWAPF	bcd+6,W		;
 	CALL	PutNyb
-
-	MOVF	bcd+6,W		; 
+	MOVF	bcd+6,W		;
 	CALL	PutNyb
-
-
-	SWAPF	bcd+7,W		; 
+	SWAPF	bcd+7,W		;
 	CALL	PutNyb
-
-	MOVF	bcd+7,W		; 
+	MOVF	bcd+7,W		;
 	CALL	PutNyb
-
 	endm
-
+#endif
 ;-------------------------macros
 
 ;
@@ -910,6 +940,30 @@ mainloop
 	bank0
 #endif
 
+#ifdef	pseudo_analog_keyboard
+	call	scankey_pseudo_analog
+	movlw	"A"
+	call	putchr
+	movfw	KEY_1_0to1_time
+	call 	DISPLAY_W
+	movlw	"B"
+	call	putchr
+	movfw	KEY_1_1to0_time
+	call	DISPLAY_W
+
+#ifdef 	simple_two_key_keyboard
+	movf	KEY_1_0to1_time,f
+	btfss	STATUS,Z
+	call	KEY_1_1_pressed
+
+	movf	KEY_1_1to0_time,f
+	btfss	STATUS,Z
+	call	KEY_1_0_pressed
+
+#endif 	simple_two_key_keyboard 
+
+#endif	pseudo_analog_keyboard
+
 ;-----------------------------------------------------------
 
 #ifdef	cr_only_for_gnuplot
@@ -934,7 +988,163 @@ delay_1s
 
 	goto	mainloop	; Start next measurement
 
+;-------------------------------------------------------------------------------
+;------------------------------end of mainloop----------------------------------
+;-------------------------------------------------------------------------------
 
+#ifdef pseudo_analog_keyboard
+
+#ifdef	simple_two_key_keyboard
+;//fixme - just simple implementation allowing changing temp of sensor 0 
+KEY_1_0_pressed:
+	movlw	"A"
+	call	putchr
+
+	movlw	d'00'
+	call	EE_R
+	movwf	set_temp
+	btfsc	set_temp,7	; test minus sign
+	goto	KEY_1_0_negative
+;positive. decrease
+	decf	set_temp
+	goto	KEY_1_0_pressed_write	; store
+
+KEY_1_0_negative: ;//fixme - is this really nessesary? lol.
+	xorlw	b'11111111' ;invert W
+	movwf	set_temp
+	incf	set_temp ; add 1 (convert from 2's complement)
+
+	incf	set_temp	; decrease negative temperature
+	movfw	set_temp ; move to W
+	xorlw	b'11111111' ;invert W
+	movwf	set_temp ; move to data register
+	incf	set_temp	; add 1(convert from 2's complement)
+
+KEY_1_0_pressed_write:
+	movlw	d'00' ; set_temp
+	bank1
+	movwf	EEADR	; mem location
+	bank0
+	movfw	set_temp	; data
+	call	EE_W
+	movlw	d'09'	; hysteresis
+	bank1
+	movwf	EEADR 	; mem location
+	bank0
+	movfw	set_temp	; data
+	call	EE_W
+	return
+
+KEY_1_1_pressed:
+	movlw	"B"
+	call	putchr
+
+	movlw	d'00'
+	call	EE_R
+	movwf	set_temp
+	incf	set_temp
+	goto	KEY_1_0_pressed_write	; same as for key 0
+
+	return
+#endif 	simple_two_key_keyboard
+
+;scankeyboard
+scankey_pseudo_analog:
+	bank1
+	bcf	KEY_1_tris
+	bank0
+	bcf	KEY_1
+	call	Delay_100ms
+	; set key sense to 0
+	bank1
+	bsf	KEY_1_tris 	; set to input
+	bank0
+	call	KEY_1_test_1
+
+	bank1
+	bcf	KEY_1_tris
+	bank0
+	bsf	KEY_1
+	call	Delay_100ms
+	; set key sense to 1
+	bank1
+	bsf	KEY_1_tris 	; set to input
+	bank0
+	call	KEY_1_test_0
+	return
+
+;	movf	KEY_1_0to1_time,f
+;	btfss	STATUS,Z
+;	goto	KEY_1_1_pressed
+
+;	movf	KEY_1_1to0_time,f
+;	btfss	STATUS,Z
+;	goto	KEY_1_0_pressed
+
+;-----test1
+KEY_1_test_1:
+	clrf	KEY_1_0to1_time
+
+KEY_1_test_1_loop:
+	incfsz	KEY_1_0to1_time
+	goto	KEY_1_0to1_incf
+	goto	KEY_1_0to1_time_overflow
+		; key 1 held to 0 or no key pressed 
+KEY_1_0to1_incf:
+	btfss	KEY_1
+	goto	KEY_1_test_1_loop
+			; 1-255 value found
+KEY_1_0to1_time_overflow:
+			; KEY_1_0to1_time set to 0 
+	return
+
+;----test0
+KEY_1_test_0:
+	clrf	KEY_1_1to0_time
+
+KEY_1_test_0_loop:
+	incfsz	KEY_1_1to0_time
+	goto	KEY_1_1to0_incf
+	goto	KEY_1_1to0_time_overflow
+		; key 1 held to 1 or no key pressed
+KEY_1_1to0_incf:
+	btfsc	KEY_1
+	goto	KEY_1_test_0_loop
+			; 1-255 value found
+KEY_1_1to0_time_overflow:
+			; KEY_1_1to0_time set to 0 
+	return
+
+
+DISPLAY_W:
+
+        clrf    AccA
+        clrf    AccA+1
+	clrf	AccA+2
+;	bank1
+;	movfw	OSCCAL
+;	bank0
+
+        movwf   AccA+3	; mov W to AccA+3 - display 8 bit value
+
+;       Format as BCD string
+;        iorwf   FPE,f           ; W may hold Error (0xff)
+        call    B2_BCD          ; format as BCD
+				; extract and send to display
+;        call    Swap3
+;       call    Move3
+	SWAPF	bcd+6,W		; 1000
+;	CALL	PutNyb		; W is 256max so no need for 1000's
+	MOVF	bcd+6,W		; 100
+	CALL	PutNyb
+	SWAPF	bcd+7,W		; 10
+	CALL	PutNyb
+	MOVF	bcd+7,W		; 1
+	CALL	PutNyb
+	return
+
+
+#endif pseudo_analog_keyboard
 
 ; 100ms delay
 
@@ -1096,7 +1306,7 @@ b2bcd3	movlw	0x33
 Init	bank1
 
 	movlw	b'00000000'		; Option register
-	movwf	OPTION_REG	; Port B weak pull-up enabled
+	movwf	OPTION_REG	; weak pull-up enabled
 				; INTDEG Don't care
 				; Count RA4/T0CKI
 				; Count on falling edge
@@ -1111,17 +1321,31 @@ Init	bank1
 	bsf	OPTION_REG,PSA
 	call	3ffh
 	movwf	OSCCAL
-	
+
+#ifdef	infrared_serial_output
 	bcf	S_out_TRIS	; set serial output as output.
 				; as we do not want to introduce 
 				; extra noise on (simple) serial line)
 				; this will remain like that 
 				; so set each time , and never never back.
+	nop
+	bcf	S_out_WPU	; disable weak pullup on serial output's pin
+	nop
+#endif 	infrared_serial_output
+#ifdef	pseudo_analog_keyboard
+	bcf	KEY_1_WPU
+#endif	pseudo_analog_keyboard
+
 #ifdef	shift_register_display
 	nop
 	bcf	DISPLAY_CLOCK_TRIS ; display clock is output
 	nop
 	bcf	DISPLAY_DATA_TRIS ; display data is output
+	nop
+	bcf	DISPLAY_CLOCK_WPU
+	nop
+	bcf	DISPLAY_DATA_WPU
+	nop
 #endif	shift_register_display
 	bank0
 
@@ -2353,7 +2577,7 @@ EE_R	bank1
 	RETURN
 EE_W
 	bank1
-;	MOVWF	EEDATA
+	MOVWF	EEDATA
 	BSF	EECON1,WREN	; Enable Write
 	MOVLW	0x55		;
 	MOVWF	EECON2		; Write 0x55
