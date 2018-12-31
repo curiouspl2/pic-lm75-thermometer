@@ -52,15 +52,29 @@
 ;#define analog_ladder_keyboard
 	; using 100nF cap and set of resistors to change discharge and charge times in series with each switch. 
 	;//fixme - currently not implemented
-#ifdef	simple_two_key_keyboard
 #ifdef	infrared_serial_output
-#define	simple_two_key_keyboard_infrared_serial_output_debug 
-	;//fixme - currently not ifdef'd 
+#define	pseudo_analog_keyboard_infrared_serial_debug 
+	;debug detected 0to1 and 1to0 transition times of keyboard
+	;usefull to tune up resistor ladder keyboard resistors
 #endif  infrared_serial_output
-#endif	simple_two_key_keyboard
+
 #endif 	pseudo_analog_keyboard
 
 ;------formatting
+;//fixme 
+; it would be nice to create new formatting theme for tv terminals displays
+; idea would be to clear screen and then nicely format all sensors output so they appear in columns
+; along with their additional settings like thermostats and some text descriptions 
+; like :
+;no  actual/setpoint/hyst
+;1	22 / 24 / 22 - living room - heat pump
+;2	10 / 99 / 99 - outside
+;3	10 / 4 	/ 3  - garage heated with ground heat pump
+;4 	-4 / -5 / -4 - fridge
+;5 	 8 / 10 / 8  - fridge out to garage heat buffer
+;6 	40 / 98 / 85 - solar collector critical - dump heat to garage buffer
+;7	40 / 35 / 30 - solar collector low power pump
+;8	25 / 25 / 30 - hybrid solar cell cooling
 
 ;#define  shift_register_display_0to7
 	; use shift register display , order 0 to 7
@@ -74,8 +88,6 @@
 #define	thermostat_display
 	; display thermostat settings for each sensor?
 ;-----
-
-
 	; extra delay for i2c routines , insert nops here for longer cables
 i2c_delay	macro
 	nop
@@ -87,7 +99,6 @@ i2c_delay	macro
 	nop
 	nop
 	endm
-
 
 ;--define which thermometers are enabled - only ones defined there will be initalised, woken up, read and their themostats 
 updated
@@ -396,6 +407,7 @@ START
 	call	pmsg
 #endif 	splash_message
 
+;---------------------wake up all sensors
 #ifdef  lm75_0
 ;	movlw	H'90'
 	movlw	b'10010000'	;0 
@@ -404,7 +416,7 @@ START
 #endif
 
 #ifdef 	lm75_1
-	movlw	H'92'
+;	movlw	H'92'
 	movlw	b'10010010'	;1
 	movwf	LM75_adress
 	call	LM75_WAKEUP
@@ -450,110 +462,7 @@ START
 ;--------------------
 
 
-#ifdef	lm75_0
-	movlw	d'00'
-	call	EE_R
-	movwf	set_temp
-	movlw	d'09'
-	call	EE_R
-	movwf	set_hyst
-
-	movlw	b'10010000'	;0 
-	movwf	LM75_adress
-	call	SET_THERMOSTAT
-#endif
-
-#ifdef	lm75_1
-	movlw	d'01'
-	call	EE_R
-	movwf	set_temp
-	movlw	d'10'
-	call	EE_R
-	movwf	set_hyst
-
-	movlw	b'10010010'	;1
-	movwf	LM75_adress
-	call	SET_THERMOSTAT
-#endif
-
-#ifdef	lm75_2
-	movlw	d'02'
-	call	EE_R
-	movwf	set_temp
-	movlw	d'11'
-	call	EE_R
-	movwf	set_hyst
-
-	movlw	b'10010100'	;2
-	movwf	LM75_adress
-	call	SET_THERMOSTAT
-#endif
-
-#ifdef	lm75_3
-	movlw	d'03'
-	call	EE_R
-	movwf	set_temp
-	movlw	d'12'
-	call	EE_R
-	movwf	set_hyst
-
-	movlw	b'10010110'	;3
-	movwf	LM75_adress
-	call	SET_THERMOSTAT
-#endif 
-
-#ifdef	lm75_4
-	movlw	d'04'
-	call	EE_R
-	movwf	set_temp
-	movlw	d'13'
-	call	EE_R
-	movwf	set_hyst
-
-	movlw	b'10011000'	;4
-	movwf	LM75_adress
-	call	SET_THERMOSTAT
-#endif
-
-#ifdef	lm75_5
-	movlw	d'05'
-	call	EE_R
-	movwf	set_temp
-	movlw	d'14'
-	call	EE_R
-	movwf	set_hyst
-
-	movlw	b'10011010'	;5
-	movwf	LM75_adress
-	call	SET_THERMOSTAT
-#endif
-
-#ifdef	lm75_6
-	movlw	d'06'
-	call	EE_R
-	movwf	set_temp
-	movlw	d'15'
-	call	EE_R
-	movwf	set_hyst
-
-	movlw	b'10011100'	;6
-	movwf	LM75_adress
-	call	SET_THERMOSTAT
-#endif
-
-#ifdef	lm75_7
-	movlw	d'07'
-	call	EE_R
-	movwf	set_temp
-	movlw	d'16'
-	call	EE_R
-	movwf	set_hyst
-
-	movlw	b'10011110'	;7
-	movwf	LM75_adress
-	call	SET_THERMOSTAT
-#endif
-
+	call 	set_thermostats
 ;-------------------- init cr 
 	call 	send_crlf 
 			; initial cr. no data to not confuse scripts 
@@ -564,7 +473,7 @@ mainloop
 
 
 #ifdef	shutdown_mode
-
+;-------------------------------if we do use shutdown mode, we have to wake up all sensors
 #ifdef	lm75_0
 	movlw	b'10010000'	;0 
 	movwf	LM75_adress
@@ -629,6 +538,7 @@ mainloop
 
 
 #ifdef	shift_register_display_0to7
+;--------if we do use shift register display, display the temperature, in the order we defined (0 to 7)
 ; sensor 0-7 order
 #ifdef	lm75_0
 	movlw	H'90'		;0 
@@ -679,8 +589,10 @@ mainloop
 	call	DISPLAY_TEMPERATURE_7SEGMENT	
 #endif	lm75_7
 #endif	shift_register_display_0to7
+;--==============================================
 
 #ifdef	shift_register_display_7to0
+;--------if we do use shift register display, display the temperature, in the order we defined (7 to 0)
 ; sensor 7-0 order 
 #ifdef	lm75_7
 	movlw	b'10011110'	;7
@@ -942,6 +854,7 @@ mainloop
 
 #ifdef	pseudo_analog_keyboard
 	call	scankey_pseudo_analog
+#ifdef	pseudo_analog_keyboard_infrared_serial_debug
 	movlw	"A"
 	call	putchr
 	movfw	KEY_1_0to1_time
@@ -950,6 +863,7 @@ mainloop
 	call	putchr
 	movfw	KEY_1_1to0_time
 	call	DISPLAY_W
+#endif	pseudo_analog_keyboard_infrared_serial_debug
 
 #ifdef 	simple_two_key_keyboard
 	movf	KEY_1_0to1_time,f
@@ -992,13 +906,125 @@ delay_1s
 ;------------------------------end of mainloop----------------------------------
 ;-------------------------------------------------------------------------------
 
+set_thermostats:
+
+;--------------------------set all thermostats to values stored in EEPROM
+#ifdef	lm75_0
+	movlw	d'00'
+	call	EE_R
+	movwf	set_temp
+	movlw	d'09'
+	call	EE_R
+	movwf	set_hyst
+
+	movlw	b'10010000'	;0 
+	movwf	LM75_adress
+	call	SET_THERMOSTAT
+#endif
+
+#ifdef	lm75_1
+	movlw	d'01'
+	call	EE_R
+	movwf	set_temp
+	movlw	d'10'
+	call	EE_R
+	movwf	set_hyst
+
+	movlw	b'10010010'	;1
+	movwf	LM75_adress
+	call	SET_THERMOSTAT
+#endif
+
+#ifdef	lm75_2
+	movlw	d'02'
+	call	EE_R
+	movwf	set_temp
+	movlw	d'11'
+	call	EE_R
+	movwf	set_hyst
+
+	movlw	b'10010100'	;2
+	movwf	LM75_adress
+	call	SET_THERMOSTAT
+#endif
+
+#ifdef	lm75_3
+	movlw	d'03'
+	call	EE_R
+	movwf	set_temp
+	movlw	d'12'
+	call	EE_R
+	movwf	set_hyst
+
+	movlw	b'10010110'	;3
+	movwf	LM75_adress
+	call	SET_THERMOSTAT
+#endif 
+
+#ifdef	lm75_4
+	movlw	d'04'
+	call	EE_R
+	movwf	set_temp
+	movlw	d'13'
+	call	EE_R
+	movwf	set_hyst
+
+	movlw	b'10011000'	;4
+	movwf	LM75_adress
+	call	SET_THERMOSTAT
+#endif
+
+#ifdef	lm75_5
+	movlw	d'05'
+	call	EE_R
+	movwf	set_temp
+	movlw	d'14'
+	call	EE_R
+	movwf	set_hyst
+
+	movlw	b'10011010'	;5
+	movwf	LM75_adress
+	call	SET_THERMOSTAT
+#endif
+
+#ifdef	lm75_6
+	movlw	d'06'
+	call	EE_R
+	movwf	set_temp
+	movlw	d'15'
+	call	EE_R
+	movwf	set_hyst
+
+	movlw	b'10011100'	;6
+	movwf	LM75_adress
+	call	SET_THERMOSTAT
+#endif
+
+#ifdef	lm75_7
+	movlw	d'07'
+	call	EE_R
+	movwf	set_temp
+	movlw	d'16'
+	call	EE_R
+	movwf	set_hyst
+
+	movlw	b'10011110'	;7
+	movwf	LM75_adress
+	call	SET_THERMOSTAT
+#endif
+
+	return 
+
+
 #ifdef pseudo_analog_keyboard
 
 #ifdef	simple_two_key_keyboard
 ;//fixme - just simple implementation allowing changing temp of sensor 0 
 KEY_1_0_pressed:
+#ifdef	pseudo_analog_keyboard_infrared_serial_debug
 	movlw	"A"
 	call	putchr
+#endif	pseudo_analog_keyboard_infrared_serial_debug
 
 	movlw	d'00'
 	call	EE_R
@@ -1033,11 +1059,15 @@ KEY_1_0_pressed_write:
 	bank0
 	movfw	set_temp	; data
 	call	EE_W
+	
+	call 	set_thermostats
 	return
 
 KEY_1_1_pressed:
+#ifdef	pseudo_analog_keyboard_infrared_serial_debug
 	movlw	"B"
 	call	putchr
+#endif	pseudo_analog_keyboard_infrared_serial_debug
 
 	movlw	d'00'
 	call	EE_R
